@@ -1,0 +1,25 @@
+{
+	"AWSTemplateFormatVersion": "2010-09-09",
+    "Description": "Creates pipelines and required roles to provide CI/CD for CloudFormation templates",
+	"Resources": {
+		"DemoBucketForValidatioPipeline": {
+            "Type": "AWS::S3::Bucket",
+            "Properties": {
+                "AccessControl": "Private",
+                "LifecycleConfiguration": {
+                    "Rules": [
+                        {
+                            "NoncurrentVersionExpirationInDays": 30,
+                            "Status": "Enabled"
+                        }
+                    ]
+                },
+                "VersioningConfiguration": {
+                    "Status": "Enabled"
+                }
+            }
+        }
+	}
+	
+	
+}

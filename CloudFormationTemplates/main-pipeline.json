@@ -1,0 +1,1473 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Description": "Creates pipelines and required roles to provide CI/CD for CloudFormation templates",
+    "Metadata": {
+        "AWS::CloudFormation::Interface": {
+            "ParameterGroups": [
+                {
+                    "Label": {
+                        "default": "Source Settings"
+                    },
+                    "Parameters": [
+                        "SourceS3Bucket",
+						"SourceS3ObjectKey"
+                    ]
+                },
+                {
+                    "Label": {
+                        "default": "Notification Settings"
+                    },
+                    "Parameters": [
+                        "EmailPrimary",
+                        "EmailSecondary"
+                    ]
+                },
+                {
+                    "Label": {
+                        "default": "Deployment Settings"
+                    },
+                    "Parameters": [
+                        "ManualApproval"
+                    ]
+                },
+                {
+                    "Label": {
+                        "default": "Stack Creation Settings"
+                    },
+                    "Parameters": [
+                        "StackCreationRoleArn"
+                    ]
+                },
+                {
+                    "Label": {
+                        "default": "Logical (pre-stack-create) Tests"
+                    },
+                    "Parameters": [
+                        "PreCreateTest1",
+                        "PreCreateTest2",
+                        "PreCreateTest3",
+                        "PreCreateTest4"
+                    ]
+                },
+                {
+                    "Label": {
+                        "default": "Functional (post-stack-create) Tests"
+                    },
+                    "Parameters": [
+                        "PostCreateTest1",
+                        "PostCreateTest2",
+                        "PostCreateTest3",
+                        "PostCreateTest4"
+                    ]
+                }
+            ],
+            "ParameterLabels": {
+                "SourceS3ObjectKey": {
+                    "default": "Object Name"
+                },
+				"SourceS3Bucket": {
+                    "default": "Bucket Name"
+                },
+                "EmailPrimary": {
+                    "default": "Primary Email"
+                },
+                "EmailSecondary": {
+                    "default": "Secondary Email"
+                },
+                "ManualApproval": {
+                    "default": "Manual Approval"
+                },
+                "PostCreateTest1": {
+                    "default": "1st Test"
+                },
+                "PostCreateTest2": {
+                    "default": "2nd Test"
+                },
+                "PostCreateTest3": {
+                    "default": "3rd Test"
+                },
+                "PostCreateTest4": {
+                    "default": "4th Test"
+                },
+                "PreCreateTest1": {
+                    "default": "1st Test"
+                },
+                "PreCreateTest2": {
+                    "default": "2nd Test"
+                },
+                "PreCreateTest3": {
+                    "default": "3rd Test"
+                },
+                "PreCreateTest4": {
+                    "default": "4th Test"
+                },
+                "StackCreationRoleArn": {
+                    "default": "Create Stack Role ARN"
+                }
+            }
+        }
+    },
+    "Mappings": {
+        "Functions": {
+            "Notification": {
+                "S3Key": "email_notification.zip",
+                "Handler": "email_notification"
+            }
+        },
+        "General": {
+            "CIConfig": {
+                "CITestPath": "ci"
+            },
+            "CodeRepo": {
+                "S3BucketPrefix": [
+				  {
+				    "Ref": "LambdaBucket"
+				  }
+				],
+                "S3KeyPrefix": "lambda_functions/"
+            }
+        }
+    },
+    "Parameters": {
+        "SourceS3Bucket": {
+            "Default": "test-cfn-validation",
+            "Description": "Name of S3 Bucket to use as pipeline source",
+            "Type": "String"
+        },
+		"SourceS3ObjectKey": {
+            "Default": "demo_source.zip",
+            "Description": "Name of the zipped file to use as pipeline source",
+            "Type": "String"
+        },
+		
+        "EmailPrimary": {
+            "AllowedPattern": "^$|^[a-zA-Z0-9_\\-\\.]+@[a-zA-Z0-9_\\-\\.]+\\.[a-zA-Z\\.]+[a-zA-Z]+$",
+            "Default": "",
+            "Description": "Primary email to notify for pending manual approvals and pipeline execution notifications",
+            "Type": "String"
+        },
+        "EmailSecondary": {
+            "AllowedPattern": "^$|^[a-zA-Z0-9_\\-\\.]+@[a-zA-Z0-9_\\-\\.]+\\.[a-zA-Z\\.]+[a-zA-Z]+$",
+            "Default": "",
+            "Description": "Secondary email to notify for pending manual approvals and pipeline execution notifications",
+            "Type": "String"
+        },
+        "ManualApproval": {
+            "AllowedValues": [
+                "Yes",
+                "No"
+            ],
+            "Default": "Yes",
+            "Description": "Require manual approval before deploying templates, will email Primary Email and (optionally) Secondary Email specified in the Email Notification Settings section",
+            "Type": "String"
+        },
+        "PostCreateTest1": {
+            "Default": "",
+            "Description": "name for 1st post-stack-creation test lambda function (optional)",
+            "Type": "String"
+        },
+        "PostCreateTest2": {
+            "Default": "",
+            "Description": "name for 2nd post-stack-creation test lambda function (optional)",
+            "Type": "String"
+        },
+        "PostCreateTest3": {
+            "Default": "",
+            "Description": "name for 3rd post-stack-creation test lambda function (optional)",
+            "Type": "String"
+        },
+        "PostCreateTest4": {
+            "Default": "",
+            "Description": "name for 4th post-stack-creation test lambda function (optional)",
+            "Type": "String"
+        },
+        "PreCreateTest1": {
+            "Default": "",
+            "Description": "name for 1st pre-stack-creation test lambda function (optional)",
+            "Type": "String"
+        },
+        "PreCreateTest2": {
+            "Default": "",
+            "Description": "name for 2nd pre-stack-creation test lambda function (optional)",
+            "Type": "String"
+        },
+        "PreCreateTest3": {
+            "Default": "",
+            "Description": "name for 3rd pre-stack-creation test lambda function (optional)",
+            "Type": "String"
+        },
+        "PreCreateTest4": {
+            "Default": "",
+            "Description": "name for 4th pre-stack-creation test lambda function (optional)",
+            "Type": "String"
+        },
+        "StackCreationRoleArn": {
+            "Description": "Role used to launch CloudFormation stacks",
+            "Type": "String"
+        },
+		"LambdaBucket": {
+		    "Description": "S3 Bucket Name where Lambda Functions deploybles are uploaded",
+			"Type": "String"
+		}
+    },
+    "Conditions": {
+        "EmailPrimary": {
+            "Fn::Not": [
+                {
+                    "Fn::Equals": [
+                        {
+                            "Ref": "EmailPrimary"
+                        },
+                        ""
+                    ]
+                }
+            ]
+        },
+        "EmailSecondary": {
+            "Fn::Not": [
+                {
+                    "Fn::Equals": [
+                        {
+                            "Ref": "EmailSecondary"
+                        },
+                        ""
+                    ]
+                }
+            ]
+        },
+        "EnablePostCreateTest1": {
+            "Fn::Not": [
+                {
+                    "Fn::Equals": [
+                        {
+                            "Ref": "PostCreateTest1"
+                        },
+                        ""
+                    ]
+                }
+            ]
+        },
+        "EnablePostCreateTest2": {
+            "Fn::Not": [
+                {
+                    "Fn::Equals": [
+                        {
+                            "Ref": "PostCreateTest2"
+                        },
+                        ""
+                    ]
+                }
+            ]
+        },
+        "EnablePostCreateTest3": {
+            "Fn::Not": [
+                {
+                    "Fn::Equals": [
+                        {
+                            "Ref": "PostCreateTest3"
+                        },
+                        ""
+                    ]
+                }
+            ]
+        },
+        "EnablePostCreateTest4": {
+            "Fn::Not": [
+                {
+                    "Fn::Equals": [
+                        {
+                            "Ref": "PostCreateTest4"
+                        },
+                        ""
+                    ]
+                }
+            ]
+        },
+        "EnablePreCreateTest1": {
+            "Fn::Not": [
+                {
+                    "Fn::Equals": [
+                        {
+                            "Ref": "PreCreateTest1"
+                        },
+                        ""
+                    ]
+                }
+            ]
+        },
+        "EnablePreCreateTest2": {
+            "Fn::Not": [
+                {
+                    "Fn::Equals": [
+                        {
+                            "Ref": "PreCreateTest2"
+                        },
+                        ""
+                    ]
+                }
+            ]
+        },
+        "EnablePreCreateTest3": {
+            "Fn::Not": [
+                {
+                    "Fn::Equals": [
+                        {
+                            "Ref": "PreCreateTest3"
+                        },
+                        ""
+                    ]
+                }
+            ]
+        },
+        "EnablePreCreateTest4": {
+            "Fn::Not": [
+                {
+                    "Fn::Equals": [
+                        {
+                            "Ref": "PreCreateTest4"
+                        },
+                        ""
+                    ]
+                }
+            ]
+        },
+        "ManualApproval": {
+            "Fn::Equals": [
+                {
+                    "Ref": "ManualApproval"
+                },
+                "Yes"
+            ]
+        }
+    },
+    "Resources": {
+        "DeployBucket": {
+            "Type": "AWS::S3::Bucket"
+        },
+        "ArtifactBucket": {
+            "Type": "AWS::S3::Bucket",
+            "Properties": {
+                "AccessControl": "Private",
+                "LifecycleConfiguration": {
+                    "Rules": [
+                        {
+                            "NoncurrentVersionExpirationInDays": 30,
+                            "Status": "Enabled"
+                        }
+                    ]
+                },
+                "VersioningConfiguration": {
+                    "Status": "Enabled"
+                }
+            }
+        },
+        "ScratchBucket": {
+            "Type": "AWS::S3::Bucket",
+            "Properties": {
+                "AccessControl": "Private"
+            }
+        },
+        
+		"OutputBucket": {
+            "Type": "AWS::S3::Bucket",
+            "Properties": {
+                "VersioningConfiguration": {
+                    "Status": "Enabled"
+                }
+            }
+        },
+		
+		"CodeBuildCreateRole": {
+            "Type": "AWS::IAM::Role",
+            "Properties": {
+                "AssumeRolePolicyDocument": {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {
+                                "Service": "codebuild.amazonaws.com"
+                            },
+                            "Action": "sts:AssumeRole"
+                        }
+                    ]
+                },
+                "Path": "/",
+                "Policies": [
+                    {
+                        "PolicyName": "codebuildrole",
+                        "PolicyDocument": {
+                            "Version": "2012-10-17",
+                            "Statement": [
+                                {
+                                    "Effect": "Allow",
+                                    "Resource": [
+                                        {
+                                            "Fn::Sub": "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/CreateStack*"
+                                        },
+                                        {
+                                            "Fn::Sub": "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/CreateStack*:*"
+                                        }
+                                    ],
+                                    "Action": [
+                                        "logs:CreateLogGroup",
+                                        "logs:CreateLogStream",
+                                        "logs:PutLogEvents"
+                                    ]
+                                },
+                                {
+                                    "Effect": "Allow",
+                                    "Resource": [
+                                        {
+                                            "Fn::Sub": "arn:aws:s3:::codepipeline-${AWS::Region}-*"
+                                        }
+                                    ],
+                                    "Action": [
+                                        "s3:PutObject",
+                                        "s3:GetObject",
+                                        "s3:GetObjectVersion"
+                                    ]
+                                },
+								{
+                                    "Effect": "Allow",
+                                    "Resource": "*",
+                                    "Action": [
+                                        "s3:*"
+                                    ]
+                                },
+								{
+									"Action": [
+										"cloudformation:*"
+									],
+									"Resource": "*",
+									"Effect": "Allow"
+								},
+								{
+									"Action": [
+										"sns:Publish",
+										"sts:AssumeRole"
+									],
+									"Resource": "*",
+									"Effect": "Allow"
+								},
+								{
+									"Action": "ec2:*",
+									"Effect": "Allow",
+									"Resource": "*"
+								},
+								{
+									"Effect": "Allow",
+									"Action": "elasticloadbalancing:*",
+									"Resource": "*"
+								},
+								{
+									"Effect": "Allow",
+									"Action": "cloudwatch:*",
+									"Resource": "*"
+								},
+								{
+									"Effect": "Allow",
+									"Action": "autoscaling:*",
+									"Resource": "*"
+								},
+								{
+									"Effect": "Allow",
+									"Action": "iam:CreateServiceLinkedRole",
+									"Resource": "*",
+									"Condition": {
+										"StringEquals": {
+											"iam:AWSServiceName": [
+												"autoscaling.amazonaws.com",
+												"ec2scheduled.amazonaws.com",
+												"elasticloadbalancing.amazonaws.com",
+												"spot.amazonaws.com",
+												"spotfleet.amazonaws.com"
+											]
+										}
+									}
+								}
+                            ]
+                        }
+                    }
+                ]
+            }
+        },
+        
+		
+		
+		"CodeBuildCreateStackProject": {
+            "Type": "AWS::CodeBuild::Project",
+			"DependsOn": [
+				"CodeBuildCreateRole",
+				"SNSTopic"
+			],
+            "Properties": {
+                "Name": "CreateStack",
+                "Description": "Submit Code build job for create stack",
+                "ServiceRole": {
+                    "Fn::GetAtt": [
+                        "CodeBuildCreateRole",
+                        "Arn"
+                    ]
+                },
+                "Artifacts": {
+                    "Type": "no_artifacts"
+                },
+                "Environment": {
+                    "Type": "LINUX_CONTAINER",
+                    "ComputeType": "BUILD_GENERAL1_SMALL",
+                    "Image": "aws/codebuild/python:2.7.12",
+					"EnvironmentVariables": [
+					  {
+						"Name": "sns_topic",
+						"Value": {
+							"Ref": "SNSTopic"
+                        }
+					  },
+					  {
+						"Name": "source_bucket",
+						"Value": {
+							"Ref": "SourceS3Bucket"
+                        }
+					  },
+					  {
+						"Name": "output_bucket",
+						"Value": {
+							"Ref": "OutputBucket"
+                        }
+					  }
+					]
+                },
+                "Source": {
+				    "Location": {
+					    "Fn::Join": [
+						    "/",
+							[
+							    {
+								    "Ref": "SourceS3Bucket"
+								},
+								{
+								    "Ref": "SourceS3ObjectKey"
+								}
+							]
+						]
+					},
+                    "Type": "S3",
+					"BuildSpec": "version: 0.2\n\nphases:\n  build:\n    commands:\n      - #!/bin/bash\n      - printenv\n      - apt-get update\n      - apt-get install wget\n      - apt-get install dos2unix\n      - wget \"https://s3-$AWS_DEFAULT_REGION.amazonaws.com/${source_bucket}/Test.sh\"\n      - chmod +x Test.sh\n      - dos2unix Test.sh\n      - sudo ./Test.sh $AWS_DEFAULT_REGION $AWS_CONTAINER_CREDENTIALS_RELATIVE_URI $output_bucket $sns_topic"
+								
+                }
+            }
+        },
+        
+		
+		
+		"CodePipelineServiceRole": {
+            "Type": "AWS::IAM::Role",
+            "Properties": {
+                "AssumeRolePolicyDocument": {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Sid": "",
+                            "Effect": "Allow",
+                            "Principal": {
+                                "Service": "codepipeline.amazonaws.com"
+                            },
+                            "Action": "sts:AssumeRole"
+                        }
+                    ]
+                },
+                "Path": "/",
+                "Policies": [
+                    {
+                        "PolicyName": "CFN-CICD-CodePipelineService",
+                        "PolicyDocument": {
+                            "Version": "2012-10-17",
+                            "Statement": [
+                                {
+                                    "Fn::If": [
+                                        "ManualApproval",
+                                        {
+                                            "Action": [
+                                                "sns:Publish"
+                                            ],
+                                            "Resource": [
+                                                {
+                                                    "Ref": "SNSTopic"
+                                                }
+                                            ],
+                                            "Effect": "Allow"
+                                        },
+                                        {
+                                            "Ref": "AWS::NoValue"
+                                        }
+                                    ]
+                                },
+                                {
+                                    "Action": [
+                                        "s3:GetObject",
+                                        "s3:GetObjectVersion",
+                                        "s3:GetBucketVersioning",
+                                        "s3:PutObject"
+                                    ],
+                                    "Resource": [
+                                        {
+                                            "Fn::Sub": "arn:aws:s3:::${ArtifactBucket}"
+                                        },
+                                        {
+                                            "Fn::Sub": "arn:aws:s3:::${ArtifactBucket}/*"
+                                        },
+										{
+                                            "Fn::Sub": "arn:aws:s3:::${DeployBucket}"
+                                        },
+                                        {
+                                            "Fn::Sub": "arn:aws:s3:::${DeployBucket}/*"
+                                        },
+										{
+                                            "Fn::Sub": "arn:aws:s3:::${ScratchBucket}"
+                                        },
+                                        {
+                                            "Fn::Sub": "arn:aws:s3:::${ScratchBucket}/*"
+                                        },
+										{
+                                            "Fn::Sub": "arn:aws:s3:::${SourceS3Bucket}"
+                                        }
+
+                                    ],
+                                    "Effect": "Allow"
+                                },
+                                {
+                                    "Action": "lambda:ListFunctions",
+                                    "Resource": "*",
+                                    "Effect": "Allow"
+                                },
+								{
+                                    "Action": "s3:*",
+                                    "Resource": "*",
+                                    "Effect": "Allow"
+                                },
+                                {
+                                    "Action": "lambda:InvokeFunction",
+                                    "Resource": [
+                                        {
+                                            "Fn::Sub": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:Validate_Template"
+                                        },
+                                        {
+                                            "Fn::Sub": [
+                                                "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${GenerateReportLambdaName}",
+                                                {
+                                                    "GenerateReportLambdaName": {
+                                                        "Fn::ImportValue": "GenerateReportLambdaName"
+                                                    }
+                                                }
+                                            ]
+                                        },
+										{
+                                            "Fn::Sub": [
+                                                "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${SubscribeTopicLambdaName}",
+                                                {
+                                                    "SubscribeTopicLambdaName": {
+                                                        "Fn::ImportValue": "SubscribeTopicLambdaName"
+                                                    }
+                                                }
+                                            ]
+                                        },
+                                        {
+                                            "Fn::If": [
+                                                "EnablePreCreateTest1",
+                                                {
+                                                    "Fn::Sub": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${PreCreateTest1}"
+                                                },
+                                                {
+                                                    "Ref": "AWS::NoValue"
+                                                }
+                                            ]
+                                        },
+                                        {
+                                            "Fn::If": [
+                                                "EnablePreCreateTest2",
+                                                {
+                                                    "Fn::Sub": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${PreCreateTest2}"
+                                                },
+                                                {
+                                                    "Ref": "AWS::NoValue"
+                                                }
+                                            ]
+                                        },
+                                        {
+                                            "Fn::If": [
+                                                "EnablePreCreateTest3",
+                                                {
+                                                    "Fn::Sub": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${PreCreateTest3}"
+                                                },
+                                                {
+                                                    "Ref": "AWS::NoValue"
+                                                }
+                                            ]
+                                        },
+                                        {
+                                            "Fn::If": [
+                                                "EnablePreCreateTest4",
+                                                {
+                                                    "Fn::Sub": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${PreCreateTest4}"
+                                                },
+                                                {
+                                                    "Ref": "AWS::NoValue"
+                                                }
+                                            ]
+                                        },
+                                        {
+                                            "Fn::If": [
+                                                "EnablePostCreateTest1",
+                                                {
+                                                    "Fn::Sub": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${PostCreateTest1}"
+                                                },
+                                                {
+                                                    "Ref": "AWS::NoValue"
+                                                }
+                                            ]
+                                        },
+                                        {
+                                            "Fn::If": [
+                                                "EnablePostCreateTest2",
+                                                {
+                                                    "Fn::Sub": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${PostCreateTest2}"
+                                                },
+                                                {
+                                                    "Ref": "AWS::NoValue"
+                                                }
+                                            ]
+                                        },
+                                        {
+                                            "Fn::If": [
+                                                "EnablePostCreateTest3",
+                                                {
+                                                    "Fn::Sub": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${PostCreateTest3}"
+                                                },
+                                                {
+                                                    "Ref": "AWS::NoValue"
+                                                }
+                                            ]
+                                        },
+                                        {
+                                            "Fn::If": [
+                                                "EnablePostCreateTest4",
+                                                {
+                                                    "Fn::Sub": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${PostCreateTest4}"
+                                                },
+                                                {
+                                                    "Ref": "AWS::NoValue"
+                                                }
+                                            ]
+                                        }
+                                    ],
+                                    "Effect": "Allow"
+                                },
+								{
+									"Action": [
+										"codebuild:StartBuild",
+										"codebuild:StopBuild",
+										"codebuild:BatchGet*",
+										"codebuild:Get*",
+										"codebuild:List*",
+										"codecommit:GetBranch",
+										"codecommit:GetCommit",
+										"codecommit:GetRepository",
+										"codecommit:ListBranches",
+										"s3:GetBucketLocation",
+										"s3:ListAllMyBuckets"
+									],
+									"Effect": "Allow",
+									"Resource": "*"
+								},
+								{
+									"Action": [
+										"logs:GetLogEvents"
+									],
+									"Effect": "Allow",
+									"Resource": "arn:aws:logs:*:*:log-group:/aws/codebuild/*:log-stream:*"
+								},
+								{
+									"Effect": "Allow",
+									"Action": [
+										"ssm:PutParameter"
+									],
+									"Resource": "arn:aws:ssm:*:*:parameter/CodeBuild/*"
+								},
+								{
+									"Action": "ec2:*",
+									"Effect": "Allow",
+									"Resource": "*"
+								},
+								{
+									"Effect": "Allow",
+									"Action": "elasticloadbalancing:*",
+									"Resource": "*"
+								},
+								{
+									"Effect": "Allow",
+									"Action": "cloudwatch:*",
+									"Resource": "*"
+								},
+								{
+									"Effect": "Allow",
+									"Action": "autoscaling:*",
+									"Resource": "*"
+								},
+								{
+									"Effect": "Allow",
+									"Action": "iam:CreateServiceLinkedRole",
+									"Resource": "*",
+									"Condition": {
+										"StringEquals": {
+											"iam:AWSServiceName": [
+												"autoscaling.amazonaws.com",
+												"ec2scheduled.amazonaws.com",
+												"elasticloadbalancing.amazonaws.com",
+												"spot.amazonaws.com",
+												"spotfleet.amazonaws.com"
+											]
+										}
+									}
+								}
+                            ]
+                        }
+                    }
+                ]
+            }
+        },
+        "CodePipeline": {
+            "Type": "AWS::CodePipeline::Pipeline",
+			"DependsOn": [
+				"CodeBuildCreateRole",
+				"CodeBuildCreateStackProject"
+				
+			],
+            "Properties": {
+                "RoleArn": {
+                    "Fn::GetAtt": [
+                        "CodePipelineServiceRole",
+                        "Arn"
+                    ]
+                },
+                "ArtifactStore": {
+                    "Type": "S3",
+                    "Location": {
+                        "Ref": "ArtifactBucket"
+                    }
+                },
+                "Stages": [
+                    {
+                        "Name": "Source",
+                        "Actions": [
+                            {
+                                "InputArtifacts": [],
+                                "Name": "Source",
+                                "ActionTypeId": {
+                                    "Category": "Source",
+                                    "Owner": "AWS",
+                                    "Version": "1",
+                                    "Provider": "S3"
+                                },
+                                "OutputArtifacts": [
+                                    {
+                                        "Name": "TemplateArtifact"
+                                    }
+                                ],
+                                "Configuration": {
+                                    "S3Bucket": {
+                                        "Ref": "SourceS3Bucket"
+                                    },
+									"S3ObjectKey": {
+                                        "Ref": "SourceS3ObjectKey"
+                                    }
+                                    
+                                },
+                                "RunOrder": 1
+                            }
+                        ]
+                    },
+					{
+                        "Name": "SubscribeToTopic",
+                        "Actions": [
+                            {
+                                "InputArtifacts": [
+                                    {
+                                        "Name": "TemplateArtifact"
+                                    }
+                                ],
+                                "Name": "Subscribe_Topic",
+                                "ActionTypeId": {
+                                    "Category": "Invoke",
+                                    "Owner": "AWS",
+                                    "Version": "1",
+                                    "Provider": "Lambda"
+                                },
+                                "OutputArtifacts": [],
+                                "Configuration": {
+                                    "FunctionName": {
+                                        "Fn::ImportValue": "SubscribeTopicLambdaName"
+                                    },
+                                    "UserParameters": {
+                                        "Fn::Sub": [
+                                            "{ \"StackId\": \"${AWS::StackId}\", \"CITestPath\": \"${CITestPath}\", \"ScratchBucket\": \"${ScratchBucket}\" , \"SNSTopic\": \"${SNSTopic}\"}",
+                                            {
+                                                "CITestPath": {
+                                                    "Fn::FindInMap": [
+                                                        "General",
+                                                        "CIConfig",
+                                                        "CITestPath"
+                                                    ]
+                                                }
+                                            }
+                                        ]
+                                    }
+                                },
+                                "RunOrder": 1
+                            }
+						]
+					},
+					{
+                        "Name": "PreCreateTests",
+                        "Actions": [
+                            {
+                                "InputArtifacts": [
+                                    {
+                                        "Name": "TemplateArtifact"
+                                    }
+                                ],
+                                "Name": "Validate_Template",
+                                "ActionTypeId": {
+                                    "Category": "Invoke",
+                                    "Owner": "AWS",
+                                    "Version": "1",
+                                    "Provider": "Lambda"
+                                },
+                                "OutputArtifacts": [],
+                                "Configuration": {
+                                    "FunctionName": "Validate_Template",
+                                    "UserParameters": {
+                                        "Fn::Sub": [
+                                            "{ \"StackId\": \"${AWS::StackId}\", \"CITestPath\": \"${CITestPath}\", \"ScratchBucket\": \"${ScratchBucket}\" , \"SNSTopic\": \"${SNSTopic}\"}",
+                                            {
+                                                "CITestPath": {
+                                                    "Fn::FindInMap": [
+                                                        "General",
+                                                        "CIConfig",
+                                                        "CITestPath"
+                                                    ]
+                                                }
+                                            }
+                                        ]
+                                    }
+                                },
+                                "RunOrder": 1
+                            },
+                            {
+                                "Fn::If": [
+                                    "EnablePreCreateTest1",
+                                    {
+                                        "InputArtifacts": [
+                                            {
+                                                "Name": "TemplateArtifact"
+                                            }
+                                        ],
+                                        "Name": {
+                                            "Ref": "PreCreateTest1"
+                                        },
+                                        "ActionTypeId": {
+                                            "Category": "Invoke",
+                                            "Owner": "AWS",
+                                            "Version": "1",
+                                            "Provider": "Lambda"
+                                        },
+                                        "OutputArtifacts": [],
+                                        "Configuration": {
+                                            "FunctionName": {
+                                                "Ref": "PreCreateTest1"
+                                            },
+                                            "UserParameters": {
+                                                "Fn::Sub": [
+                                                    "{ \"StackId\": \"${AWS::StackId}\", \"CITestPath\": \"${CITestPath}\", \"ScratchBucket\": \"${ScratchBucket}\" , \"SNSTopic\": \"${SNSTopic}\"}",
+                                                    {
+                                                        "CITestPath": {
+                                                            "Fn::FindInMap": [
+                                                                "General",
+                                                                "CIConfig",
+                                                                "CITestPath"
+                                                            ]
+                                                        }
+                                                    }
+                                                ]
+                                            }
+                                        },
+                                        "RunOrder": 2
+                                    },
+                                    {
+                                        "Ref": "AWS::NoValue"
+                                    }
+                                ]
+                            },
+                            {
+                                "Fn::If": [
+                                    "EnablePreCreateTest2",
+                                    {
+                                        "InputArtifacts": [
+                                            {
+                                                "Name": "TemplateArtifact"
+                                            }
+                                        ],
+                                        "Name": {
+                                            "Ref": "PreCreateTest2"
+                                        },
+                                        "ActionTypeId": {
+                                            "Category": "Invoke",
+                                            "Owner": "AWS",
+                                            "Version": "1",
+                                            "Provider": "Lambda"
+                                        },
+                                        "OutputArtifacts": [],
+                                        "Configuration": {
+                                            "FunctionName": {
+                                                "Ref": "PreCreateTest2"
+                                            },
+                                            "UserParameters": {
+                                                "Fn::Sub": [
+                                                    "{ \"StackId\": \"${AWS::StackId}\", \"CITestPath\": \"${CITestPath}\", \"ScratchBucket\": \"${ScratchBucket}\" }",
+                                                    {
+                                                        "CITestPath": {
+                                                            "Fn::FindInMap": [
+                                                                "General",
+                                                                "CIConfig",
+                                                                "CITestPath"
+                                                            ]
+                                                        }
+                                                    }
+                                                ]
+                                            }
+                                        },
+                                        "RunOrder": 2
+                                    },
+                                    {
+                                        "Ref": "AWS::NoValue"
+                                    }
+                                ]
+                            },
+                            {
+                                "Fn::If": [
+                                    "EnablePreCreateTest3",
+                                    {
+                                        "InputArtifacts": [
+                                            {
+                                                "Name": "TemplateArtifact"
+                                            }
+                                        ],
+                                        "Name": {
+                                            "Ref": "PreCreateTest3"
+                                        },
+                                        "ActionTypeId": {
+                                            "Category": "Invoke",
+                                            "Owner": "AWS",
+                                            "Version": "1",
+                                            "Provider": "Lambda"
+                                        },
+                                        "OutputArtifacts": [],
+                                        "Configuration": {
+                                            "FunctionName": {
+                                                "Ref": "PreCreateTest3"
+                                            },
+                                            "UserParameters": {
+                                                "Fn::Sub": [
+                                                    "{ \"CITestPath\": \"${CITestPath}\", \"ScratchBucket\": \"${ScratchBucket}\" }",
+                                                    {
+                                                        "CITestPath": {
+                                                            "Fn::FindInMap": [
+                                                                "General",
+                                                                "CIConfig",
+                                                                "CITestPath"
+                                                            ]
+                                                        }
+                                                    }
+                                                ]
+                                            }
+                                        },
+                                        "RunOrder": 3
+                                    },
+                                    {
+                                        "Ref": "AWS::NoValue"
+                                    }
+                                ]
+                            },
+                            {
+                                "Fn::If": [
+                                    "EnablePreCreateTest4",
+                                    {
+                                        "InputArtifacts": [
+                                            {
+                                                "Name": "TemplateArtifact"
+                                            }
+                                        ],
+                                        "Name": {
+                                            "Ref": "PreCreateTest4"
+                                        },
+                                        "ActionTypeId": {
+                                            "Category": "Invoke",
+                                            "Owner": "AWS",
+                                            "Version": "1",
+                                            "Provider": "Lambda"
+                                        },
+                                        "OutputArtifacts": [],
+                                        "Configuration": {
+                                            "FunctionName": {
+                                                "Ref": "PreCreateTest4"
+                                            },
+                                            "UserParameters": {
+                                                "Fn::Sub": [
+                                                    "{ \"CITestPath\": \"${CITestPath}\", \"ScratchBucket\": \"${ScratchBucket}\" }",
+                                                    {
+                                                        "CITestPath": {
+                                                            "Fn::FindInMap": [
+                                                                "General",
+                                                                "CIConfig",
+                                                                "CITestPath"
+                                                            ]
+                                                        }
+                                                    }
+                                                ]
+                                            }
+                                        },
+                                        "RunOrder": 3
+                                    },
+                                    {
+                                        "Ref": "AWS::NoValue"
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        "Name": "SendNotification",
+                        "Actions": [
+							{
+                                "InputArtifacts": [
+                                    {
+                                        "Name": "TemplateArtifact"
+                                    }
+                                ],
+                                "Name": "Send_Notification",
+                                "ActionTypeId": {
+                                    "Category": "Invoke",
+                                    "Owner": "AWS",
+                                    "Version": "1",
+                                    "Provider": "Lambda"
+                                },
+                                "OutputArtifacts": [],
+                                "Configuration": {
+                                    "FunctionName": {
+                                        "Fn::ImportValue": "GenerateReportLambdaName"
+                                    },
+                                    "UserParameters": {
+                                        "Fn::Sub": [
+                                            "{ \"CITestPath\": \"${CITestPath}\",\"SNSTopic\": \"${SNSTopic}\"}",
+                                            {
+                                                "CITestPath": {
+                                                    "Fn::FindInMap": [
+                                                        "General",
+                                                        "CIConfig",
+                                                        "CITestPath"
+                                                    ]
+                                                }
+                                                
+                                            }
+                                        ]
+                                    }
+                                },
+                                "RunOrder": 1
+                            }
+                        ]
+                    },
+					{
+						"Name": "CreateStack",
+						"Actions": [
+							{
+								"ActionTypeId": {
+									"Category": "Build",
+									"Owner": "AWS",
+									"Provider": "CodeBuild",
+									"Version": 1
+								},
+								"Configuration": {
+									"ProjectName": {
+										"Ref": "CodeBuildCreateStackProject"
+									}
+								},
+								"InputArtifacts": [
+									{
+										"Name": "TemplateArtifact"
+									}
+								],
+								"Name": "CodeBuild",
+								"OutputArtifacts": [],
+								"RunOrder": 1
+							}
+						]
+					}
+					 
+                ]
+            }
+        },
+        
+		
+		"SNSTopic": {
+            "Condition": "ManualApproval",
+            "Type": "AWS::SNS::Topic",
+            "Properties": {
+                "Subscription": [
+                    {
+                        "Fn::If": [
+                            "EmailPrimary",
+                            {
+                                "Endpoint": {
+                                    "Ref": "EmailPrimary"
+                                },
+                                "Protocol": "email"
+                            },
+                            {
+                                "Ref": "AWS::NoValue"
+                            }
+                        ]
+                    },
+                    {
+                        "Fn::If": [
+                            "EmailSecondary",
+                            {
+                                "Endpoint": {
+                                    "Ref": "EmailSecondary"
+                                },
+                                "Protocol": "email"
+                            },
+                            {
+                                "Ref": "AWS::NoValue"
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        "CodeBuildServiceRole": {
+            "Type": "AWS::IAM::Role",
+            "Properties": {
+                "AssumeRolePolicyDocument": {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {
+                                "Service": "codebuild.amazonaws.com"
+                            },
+                            "Action": "sts:AssumeRole"
+                        }
+                    ]
+                },
+                "Path": "/",
+                "Policies": [
+                    {
+                        "PolicyName": "codebuildrole",
+                        "PolicyDocument": {
+                            "Version": "2012-10-17",
+                            "Statement": [
+                                {
+                                    "Effect": "Allow",
+                                    "Resource": [
+                                        {
+                                            "Fn::Sub": "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/CFN-Lint-${CodePipeline}"
+                                        },
+                                        {
+                                            "Fn::Sub": "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/CFN-Lint-${CodePipeline}:*"
+                                        },
+										{
+                                            "Fn::Sub": "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/CreateStack-${CodePipeline}"
+                                        },
+                                        {
+                                            "Fn::Sub": "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/CreateStack-${CodePipeline}:*"
+                                        }
+                                    ],
+                                    "Action": [
+                                        "logs:CreateLogGroup",
+                                        "logs:CreateLogStream",
+                                        "logs:PutLogEvents"
+                                    ]
+                                },
+                                {
+                                    "Effect": "Allow",
+                                    "Resource": [
+                                        {
+                                            "Fn::Sub": "arn:aws:s3:::codepipeline-${AWS::Region}-*"
+                                        }
+                                    ],
+                                    "Action": [
+                                        "s3:PutObject",
+                                        "s3:GetObject",
+                                        "s3:GetObjectVersion"
+                                    ]
+                                },
+								{
+                                    "Effect": "Allow",
+                                    "Resource": "*",
+                                    "Action": [
+                                        "s3:*"
+                                    ]
+                                },
+								{
+									"Action": [
+										"cloudformation:*"
+									],
+									"Resource": "*",
+									"Effect": "Allow"
+								},
+								{
+									"Action": [
+										"sns:Publish"
+									],
+									"Resource": "*",
+									"Effect": "Allow"
+								},
+								{
+									"Action": "ec2:*",
+									"Effect": "Allow",
+									"Resource": "*"
+								},
+								{
+									"Effect": "Allow",
+									"Action": "elasticloadbalancing:*",
+									"Resource": "*"
+								},
+								{
+									"Effect": "Allow",
+									"Action": "cloudwatch:*",
+									"Resource": "*"
+								},
+								{
+									"Effect": "Allow",
+									"Action": "autoscaling:*",
+									"Resource": "*"
+								},
+								{
+									"Effect": "Allow",
+									"Action": "iam:CreateServiceLinkedRole",
+									"Resource": "*",
+									"Condition": {
+										"StringEquals": {
+											"iam:AWSServiceName": [
+												"autoscaling.amazonaws.com",
+												"ec2scheduled.amazonaws.com",
+												"elasticloadbalancing.amazonaws.com",
+												"spot.amazonaws.com",
+												"spotfleet.amazonaws.com"
+											]
+										}
+									}
+								}
+                            ]
+                        }
+                    }
+                ]
+            }
+        },
+        
+			
+		"CodeBuildProject": {
+            "Type": "AWS::CodeBuild::Project",
+			"DependsOn": "CodeBuildServiceRole",
+            "Properties": {
+                "Name": {
+                    "Fn::Sub": "CFN-Lint-${CodePipeline}"
+                },
+                "Description": "Submit build jobs as part of CFN Template CI/CD pipeline",
+                "ServiceRole": {
+                    "Fn::GetAtt": [
+                        "CodeBuildServiceRole",
+                        "Arn"
+                    ]
+                },
+                "Artifacts": {
+                    "Type": "no_artifacts"
+                },
+                "Environment": {
+                    "Type": "LINUX_CONTAINER",
+                    "ComputeType": "BUILD_GENERAL1_SMALL",
+                    "Image": "ubuntu:16.04"
+                },
+                "Source": {
+				    "Location": {
+					    "Fn::Join": [
+						    "/",
+							[
+							    {
+								    "Ref": "SourceS3Bucket"
+								},
+								{
+								    "Ref": "SourceS3ObjectKey"
+								}
+							]
+						]
+					},
+                    "Type": "S3"
+                },
+                "TimeoutInMinutes": 10
+            }
+        },
+        
+		
+		
+		
+		"FailureAlert":{
+		    "Type" : "AWS::Events::Rule",
+			"Properties" : {
+				"Name": {
+                    "Fn::Sub": "FailureAlert"
+                },
+			    "Description" : "Alert in case of failure",
+				"EventPattern" : {
+				    "source": [
+                        "aws.codepipeline"
+                    ],
+					"detail-type": [
+                        "CodePipeline Pipeline Execution State Change"
+                    ],
+                    "detail": {
+                        "state": [
+                           "FAILED"
+                        ],
+						"pipeline": [
+                           { "Ref": "CodePipeline" }
+                        ]
+					}
+				},
+				"State" : "ENABLED",
+				"Targets" : [
+				    {
+					   "Arn": { "Ref": "SNSTopic" },	
+                       "Id": "FailureAlert",
+					   "InputTransformer": {
+							"InputPathsMap": {
+								"pipeline": "$.detail.pipeline",
+								"instance": "$.detail.execution-id"
+								},
+							"InputTemplate": "\"The Pipeline <pipeline> with execution id <instance> has failed. Check cloudwatch logs for more details\""
+					   }
+                    }
+				]
+			}
+		}
+		
+		
+	},
+    "Outputs": {
+        "DeploymentBucket": {
+            "Value": {
+                "Ref": "DeployBucket"
+            }
+        }
+    }
+}

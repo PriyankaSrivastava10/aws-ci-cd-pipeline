@@ -1,0 +1,9 @@
+tests:
+  sgGrp:
+    template_file: s3-template.json
+    region: us-west-2
+notify: 
+  - Manoj.Ganapathy@wolterskluwer.com
+account_details:
+  accountId: 046567842362
+  cross_account_role: arn:aws:iam::046567842362:role/AWSCloudFormationStackSetExecutionRole
