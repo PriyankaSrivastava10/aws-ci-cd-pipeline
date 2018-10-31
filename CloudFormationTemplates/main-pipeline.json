@@ -135,7 +135,7 @@
             "Type": "String"
         },
 		"SourceS3ObjectKey": {
-            "Default": "demo_source.zip",
+            "Default": "manifest.zip",
             "Description": "Name of the zipped file to use as pipeline source",
             "Type": "String"
         },
@@ -527,7 +527,7 @@
 					  {
 						"Name": "source_bucket",
 						"Value": {
-							"Ref": "SourceS3Bucket"
+							"Ref": "LambdaBucket"
                         }
 					  },
 					  {
@@ -553,7 +553,7 @@
 						]
 					},
                     "Type": "S3",
-					"BuildSpec": "version: 0.2\n\nphases:\n  build:\n    commands:\n      - #!/bin/bash\n      - printenv\n      - apt-get update\n      - apt-get install wget\n      - apt-get install dos2unix\n      - wget \"https://s3-$AWS_DEFAULT_REGION.amazonaws.com/${source_bucket}/Test.sh\"\n      - chmod +x Test.sh\n      - dos2unix Test.sh\n      - sudo ./Test.sh $AWS_DEFAULT_REGION $AWS_CONTAINER_CREDENTIALS_RELATIVE_URI $output_bucket $sns_topic"
+					"BuildSpec": "version: 0.2\n\nphases:\n  build:\n    commands:\n      - #!/bin/bash\n      - printenv\n      - apt-get update\n      - apt-get install wget\n      - apt-get install dos2unix\n      - wget \"https://s3-$AWS_DEFAULT_REGION.amazonaws.com/${source_bucket}/scripts/BuildSpec.sh\"\n      - chmod +x BuildSpec.sh\n      - dos2unix BuildSpec.sh\n      - sudo ./BuildSpec.sh $AWS_DEFAULT_REGION $AWS_CONTAINER_CREDENTIALS_RELATIVE_URI $output_bucket $sns_topic"
 								
                 }
             }
@@ -1211,7 +1211,49 @@
 								"RunOrder": 1
 							}
 						]
+					},
+					{
+						"Name": "ManualApproval",
+						"Actions": [
+							{
+								"ActionTypeId": {
+									"Category": "Approval",
+									"Owner": "AWS",
+									"Provider": "Manual",
+									"Version": 1
+								},
+								"Configuration": {
+									"NotificationArn": {
+										"Ref": "SNSTopic"
+									},
+									"ExternalEntityLink": {
+										"Fn::Join": [
+											"",
+											[
+												"https://",
+													{
+														"Ref": "AWS::Region"
+													},
+													".console.aws.amazon.com/config/home?region=",
+													{
+														"Ref": "AWS::Region"
+													},
+													"#/aggregate-dashboard///"
+											]
+											
+										]
+										
+									},
+									
+									"CustomData": "Please thouroughly review pipeline test results, template and stacks before approving."
+								},
+								
+								"Name": "Manual_Approval",
+								"RunOrder": 1
+							}
+						]
 					}
+					
 					 
                 ]
             }

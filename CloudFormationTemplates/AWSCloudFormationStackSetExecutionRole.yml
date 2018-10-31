@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: 2010-09-09
-Description: Configure the AWSCloudFormationStackSetExecutionRole to enable use of your account as a target account in AWS CloudFormation StackSets.
+Description: Configures the AWSCloudFormationStackSetExecutionRole to enable use of your account as a target account in AWS CloudFormation StackSets.
 
 Parameters:
   AdministratorAccountId:
@@ -20,6 +20,10 @@ Resources:
             Principal:
               AWS:
                 - !Ref AdministratorAccountId
+              Service:
+                - config.amazonaws.com
+                - lambda.amazonaws.com
+                - ec2.amazonaws.com
             Action:
               - sts:AssumeRole
       Path: /
@@ -37,7 +41,11 @@ Resources:
               - 
                 Effect: Allow
                 Resource: "*"
-                Action: "s3:*"
+                Action: 
+                  - "s3:*"
+                  - "config:*"
+                  - "lambda:*"
+                  
                 
               - 
                 Effect: Allow

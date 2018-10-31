@@ -6,6 +6,12 @@
             "Type": "AWS::S3::Bucket",
             "Properties": {
                 "AccessControl": "Private",
+				"Tags": [
+					{
+						"Key": "HIPPA",
+						"Value": "enabled"
+					}
+				],
                 "LifecycleConfiguration": {
                     "Rules": [
                         {
